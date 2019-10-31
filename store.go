@@ -103,14 +103,14 @@ func (store *Store) IterReferences() (storer.ReferenceIter, error) {
 				page++
 				if err != nil {
 					errs <- err
-					return
+					continue loop
 				}
 				for _, ref := range refSlice {
 					refs <- convertReferenceToGoGit(ref)
 				}
 				if len(refSlice) < limit {
 					errs <- io.EOF
-					return
+					continue loop
 				}
 			}
 		}
