@@ -88,7 +88,9 @@ func (store *Store) IterReferences() (storer.ReferenceIter, error) {
 		defer close(errs)
 		defer close(refs)
 		// limit of 0 is omited by marshaler
-		page, limit := 0, 100
+		opts := &github.ReferenceListOptions{}
+		opts.Page = 1
+		opts.PerPage = 100
 
 	loop:
 		for {
@@ -96,11 +98,8 @@ func (store *Store) IterReferences() (storer.ReferenceIter, error) {
 			case <-done:
 				break loop
 			default:
-				opts := &github.ReferenceListOptions{}
-				opts.Page = page
-				opts.PerPage = limit
 				refSlice, _, err := store.Client.Git.ListRefs(store.Context, store.RepositoryOwner, store.RepositoryName, opts)
-				page++
+				opts.Page++
 				if err != nil {
 					errs <- err
 					continue loop
@@ -108,7 +107,7 @@ func (store *Store) IterReferences() (storer.ReferenceIter, error) {
 				for _, ref := range refSlice {
 					refs <- convertReferenceToGoGit(ref)
 				}
-				if len(refSlice) < limit {
+				if len(refSlice) < opts.PerPage {
 					errs <- io.EOF
 					continue loop
 				}
