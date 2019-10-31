@@ -146,7 +146,11 @@ func (iter ReferenceIterator) ForEach(fn func(*plumbing.Reference) error) error 
 
 func (iter ReferenceIterator) Close() {
 	close(iter.done)
-	for range iter.refs {
+	for {
+		select {
+		case <-iter.refs:
+		case <-iter.errs:
+		}
 	}
 }
 
