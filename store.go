@@ -52,7 +52,92 @@ func (store *Store) EncodedObject(plumbing.ObjectType, plumbing.Hash) (plumbing.
 //
 // Valid plumbing.ObjectType values are CommitObject, BlobObject, TagObject,
 func (store *Store) IterEncodedObjects(plumbing.ObjectType) (storer.EncodedObjectIter, error) {
-	return nil, nil
+	done := make(chan struct{})
+	objs := make(chan plumbing.EncodedObject)
+	errs := make(chan error)
+
+	go func() {
+		defer close(errs)
+		defer close(objs)
+		// limit of 0 is omited by marshaler
+		opts := &github.ReferenceListOptions{}
+		opts.Page = 1
+		opts.PerPage = 100
+
+	loop:
+		for {
+			select {
+			case <-done:
+				break loop
+			default:
+				refSlice, _, err := store.Client.Git.ListRefs(store.Context, store.RepositoryOwner, store.RepositoryName, opts)
+				opts.Page++
+				if err != nil {
+					errs <- err
+					continue loop
+				}
+				for _, ref := range refSlice {
+					objs <- convertObjectToGoGit(ref)
+				}
+				if len(refSlice) < opts.PerPage {
+					errs <- io.EOF
+					continue loop
+				}
+			}
+		}
+	}()
+
+	return ObjectIterator{done: done, objs: objs, errs: errs}, nil
+}
+
+type ObjectIterator struct {
+	done chan struct{}
+	objs chan plumbing.EncodedObject
+	errs chan error
+}
+
+func (iter ObjectIterator) Next() (plumbing.EncodedObject, error) {
+	select {
+	case err := <-iter.errs:
+		return nil, err
+	case obj := <-iter.objs:
+		return obj, nil
+	}
+}
+func (iter ObjectIterator) ForEach(fn func(plumbing.EncodedObject) error) error {
+	for {
+		ref, err := iter.Next()
+		if err != nil {
+			return err
+		}
+		if err := fn(ref); err != nil {
+			return err
+		}
+	}
+}
+
+func (iter ObjectIterator) Close() {
+	close(iter.done)
+	for iter.objs != nil || iter.errs != nil {
+		select {
+		case _, ok := <-iter.objs:
+			if !ok {
+				iter.objs = nil
+			}
+		case _, ok := <-iter.errs:
+			if !ok {
+				iter.errs = nil
+			}
+		}
+	}
+}
+
+func convertObjectToGoGit(ref *github.Reference) plumbing.EncodedObject {
+	// return plumbing.NewHashReference(
+	// 	plumbing.ReferenceName(ref.GetRef()),
+	// 	plumbing.NewHash(ref.Object.GetSHA()),
+	// )
+	return nil
 }
 
 // HasEncodedObject returns ErrObjNotFound if the object doesn't
