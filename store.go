@@ -76,10 +76,7 @@ func (store *Store) Reference(name plumbing.ReferenceName) (*plumbing.Reference,
 	if err != nil {
 		return nil, err
 	}
-	return plumbing.NewHashReference(
-		plumbing.ReferenceName(ref.GetRef()),
-		plumbing.NewHash(ref.Object.GetSHA()),
-	), nil
+	return convertReferenceToGoGit(ref), nil
 }
 
 func (store *Store) IterReferences() (storer.ReferenceIter, error) {
@@ -93,10 +90,11 @@ func (store *Store) IterReferences() (storer.ReferenceIter, error) {
 		// limit of 0 is omited by marshaler
 		page, limit := 0, 100
 
+	loop:
 		for {
 			select {
 			case <-done:
-				return
+				break loop
 			default:
 				opts := &github.ReferenceListOptions{}
 				opts.Page = page
@@ -108,10 +106,7 @@ func (store *Store) IterReferences() (storer.ReferenceIter, error) {
 					return
 				}
 				for _, ref := range refSlice {
-					refs <- plumbing.NewHashReference(
-						plumbing.ReferenceName(ref.GetRef()),
-						plumbing.NewHash(ref.Object.GetSHA()),
-					)
+					refs <- convertReferenceToGoGit(ref)
 				}
 				if len(refSlice) < limit {
 					errs <- io.EOF
@@ -154,6 +149,13 @@ func (iter ReferenceIterator) Close() {
 	close(iter.done)
 	for range iter.refs {
 	}
+}
+
+func convertReferenceToGoGit(ref *github.Reference) *plumbing.Reference {
+	return plumbing.NewHashReference(
+		plumbing.ReferenceName(ref.GetRef()),
+		plumbing.NewHash(ref.Object.GetSHA()),
+	)
 }
 
 func (store *Store) RemoveReference(plumbing.ReferenceName) error { return nil }

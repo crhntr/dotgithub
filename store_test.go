@@ -3,25 +3,42 @@ package dotgithub
 import (
 	"context"
 	"io"
+	"os"
 	"testing"
 
 	"github.com/google/go-github/v28/github"
 	"github.com/src-d/go-git/storage"
+	"golang.org/x/oauth2"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 )
 
 var _ storage.Storer = &Store{}
 var _ = &ReferenceIterator{}
 
-func TestStore_Reference(t *testing.T) {
-	client := github.NewClient(nil)
+var _githubClient *github.Client
+
+func init() {
+	ctx := context.Background()
+	ts := oauth2.StaticTokenSource(
+		&oauth2.Token{AccessToken: os.Getenv("GITHUB_ACCESS_TOKEN")},
+	)
+	tc := oauth2.NewClient(ctx, ts)
+
+	_githubClient = github.NewClient(tc)
+}
+
+func setupStore() Store {
 	owner, repo := "crhntr", "dotgithub"
-	store := Store{
-		Client:          client,
+	return Store{
+		Client:          _githubClient,
 		Context:         context.Background(),
 		RepositoryOwner: owner,
 		RepositoryName:  repo,
 	}
+}
+
+func TestStore_Reference(t *testing.T) {
+	store := setupStore()
 
 	ref, err := store.Reference("refs/heads/master")
 	if err != nil {
@@ -33,14 +50,7 @@ func TestStore_Reference(t *testing.T) {
 }
 
 func TestStore_IterReferences(t *testing.T) {
-	client := github.NewClient(nil)
-	owner, repo := "crhntr", "dotgithub"
-	store := Store{
-		Client:          client,
-		Context:         context.Background(),
-		RepositoryOwner: owner,
-		RepositoryName:  repo,
-	}
+	store := setupStore()
 
 	iter, err := store.IterReferences()
 	if err != nil {
